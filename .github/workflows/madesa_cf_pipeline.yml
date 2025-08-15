@@ -2,7 +2,7 @@ name: Madesa CF Pipeline
 
 on:
   schedule:
-    - cron: "0 10 * * *"   # 10:00 UTC, diário
+    - cron: "30 9 * * *"   # 10:00 UTC, diário
   workflow_dispatch: {}     # botão "Run workflow" manual
 
 jobs:
