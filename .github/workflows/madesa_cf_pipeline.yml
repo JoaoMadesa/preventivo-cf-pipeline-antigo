@@ -23,22 +23,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Cria o arquivo de credenciais do Google a partir do Secret
       - name: Write Google credentials file
-        run: |
-          mkdir -p $HOME/secrets
-          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > $HOME/secrets/gsa.json
-
-      # Debug rápido do ambiente/arquivos
-        - name: Write Google credentials file
         run: |
           mkdir -p "${{ github.workspace }}/secrets"
           echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > "${{ github.workspace }}/secrets/gsa.json"
 
+      - name: Debug files
+        run: |
+          echo "workspace:" && ls -la "${{ github.workspace }}"
+          echo "secrets:" && ls -la "${{ github.workspace }}/secrets"
+          echo "data:" && ls -la "${{ github.workspace }}/data" || true
+
       - name: Pre-run checks
         run: |
           test -s "${{ github.workspace }}/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON não criado" && exit 1)
-          test -s "data/DExPARA.xlsx" || (echo "ERRO: data/DExPARA.xlsx não encontrado no repositório" && exit 1)
+          test -s "${{ github.workspace }}/data/DExPARA.xlsx" || (echo "ERRO: data/DExPARA.xlsx não encontrado no repositório" && exit 1)
 
       - name: Run pipeline
         env:
@@ -53,10 +52,8 @@ jobs:
           LOOKBACK_DIAS: "30"
         run: |
           python -V
-          python madesa_cf_pipeline.py --run --lookback ${LOOKBACK_DIAS}
+          python madesa_cf_pipeline.py --run --lookback "${LOOKBACK_DIAS}"
 
-
-      # Upload dos CSVs (não falha se não existir)
       - name: Upload CSV artifacts
         if: always()
         uses: actions/upload-artifact@v4
