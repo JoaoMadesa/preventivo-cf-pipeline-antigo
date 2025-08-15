@@ -30,16 +30,14 @@ jobs:
           echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > $HOME/secrets/gsa.json
 
       # Debug rápido do ambiente/arquivos
-      - name: Debug files
+        - name: Write Google credentials file
         run: |
-          echo "Repo root:" && ls -la
-          echo "data/ :" && ls -la data || true
-          echo "secrets/ :" && ls -la $HOME/secrets || true
+          mkdir -p "${{ github.workspace }}/secrets"
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > "${{ github.workspace }}/secrets/gsa.json"
 
-      # Checagens antes de rodar (falha com mensagem clara se faltar algo)
       - name: Pre-run checks
         run: |
-          test -s "$HOME/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON não criado (Secret ausente ou vazio)" && exit 1)
+          test -s "${{ github.workspace }}/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON não criado" && exit 1)
           test -s "data/DExPARA.xlsx" || (echo "ERRO: data/DExPARA.xlsx não encontrado no repositório" && exit 1)
 
       - name: Run pipeline
@@ -48,15 +46,15 @@ jobs:
           CF_SENHA: ${{ secrets.CF_SENHA }}
           CF_IDCLIENTE: "206"
           CF_IDPRODUTO: "1"
-          GOOGLE_CREDENTIALS_PATH: $HOME/secrets/gsa.json
+          GOOGLE_CREDENTIALS_PATH: ${{ github.workspace }}/secrets/gsa.json
           OUTPUT_DIR: ${{ github.workspace }}/out
           DEXPARA_XLSX_PATH: ${{ github.workspace }}/data/DExPARA.xlsx
           SHEET_ID: "1N5kJ4Q99J_yCGNRya8KPP7ZIm7GjYurq-zte5KnUCRM"
           LOOKBACK_DIAS: "30"
         run: |
-          set -e
           python -V
           python madesa_cf_pipeline.py --run --lookback ${LOOKBACK_DIAS}
+
 
       # Upload dos CSVs (não falha se não existir)
       - name: Upload CSV artifacts
