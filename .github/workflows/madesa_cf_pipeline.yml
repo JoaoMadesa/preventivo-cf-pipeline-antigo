@@ -3,7 +3,7 @@ name: Madesa CF Pipeline
 on:
   schedule:
     - cron: "0 10 * * *"   # 10:00 UTC, diário
-  workflow_dispatch: {}     # botão "Run workflow"
+  workflow_dispatch: {}     # botão "Run workflow" manual
 
 jobs:
   run:
@@ -23,52 +23,48 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # >>> cria o arquivo gsa.json a partir do Secret GOOGLE_CREDENTIALS_JSON
+      # Cria o arquivo de credenciais do Google a partir do Secret
       - name: Write Google credentials file
         run: |
           mkdir -p $HOME/secrets
           echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > $HOME/secrets/gsa.json
 
-      # (opcional) debug rápido do ambiente
+      # Debug rápido do ambiente/arquivos
       - name: Debug files
         run: |
-          echo "Listing repo root:"
-          ls -la
-          echo "Listing data/:"
-          ls -la data || true
-          echo "Credentials path:"
-          ls -la $HOME/secrets || true
+          echo "Repo root:" && ls -la
+          echo "data/ :" && ls -la data || true
+          echo "secrets/ :" && ls -la $HOME/secrets || true
 
       # Checagens antes de rodar (falha com mensagem clara se faltar algo)
       - name: Pre-run checks
         run: |
-          test -s "$HOME/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON não criado" && exit 1)
+          test -s "$HOME/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON não criado (Secret ausente ou vazio)" && exit 1)
           test -s "data/DExPARA.xlsx" || (echo "ERRO: data/DExPARA.xlsx não encontrado no repositório" && exit 1)
 
       - name: Run pipeline
         env:
-          # >>> variáveis sensíveis vindas de Secrets
           CF_EMAIL: ${{ secrets.CF_EMAIL }}
           CF_SENHA: ${{ secrets.CF_SENHA }}
-          # >>> se usar IDs fixos, pode manter hardcoded aqui:
           CF_IDCLIENTE: "206"
           CF_IDPRODUTO: "1"
-
-          # Caminhos/IDs para o script
           GOOGLE_CREDENTIALS_PATH: $HOME/secrets/gsa.json
           OUTPUT_DIR: ${{ github.workspace }}/out
           DEXPARA_XLSX_PATH: ${{ github.workspace }}/data/DExPARA.xlsx
           SHEET_ID: "1N5kJ4Q99J_yCGNRya8KPP7ZIm7GjYurq-zte5KnUCRM"
           LOOKBACK_DIAS: "30"
         run: |
+          set -e
+          python -V
           python madesa_cf_pipeline.py --run --lookback ${LOOKBACK_DIAS}
 
-      # (opcional) baixa os CSVs gerados como artefato do job
+      # Upload dos CSVs (não falha se não existir)
       - name: Upload CSV artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: csv-saida
+          if-no-files-found: ignore
           path: |
             out/ENTREGUES.csv
             out/CANCELADOS.csv
