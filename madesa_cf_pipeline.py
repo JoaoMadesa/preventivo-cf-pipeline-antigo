@@ -174,7 +174,7 @@ def montar_params(di: str, df: str, page: int, codigos: str):
     return {
         "page": page,
         "size": PAGE_SIZE,
-        "serie": "1,3",
+        "serie": "1",
         "de": datetime.strptime(di, "%d-%m-%Y").strftime("%Y/%m/%d 00:00:00"),
         "ate": datetime.strptime(df, "%d-%m-%Y").strftime("%Y/%m/%d 23:59:59"),
         "codigoOcorrencia": codigos,
