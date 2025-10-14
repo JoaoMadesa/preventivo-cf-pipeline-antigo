@@ -69,7 +69,8 @@ USE_CSV = True  # se False, exporta XLSX
 
 # Google Sheets
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-SHEET_ID = os.getenv("SHEET_ID", "1N5kJ4Q99J_yCGNRya8KPP7ZIm7GjYurq-zte5KnUCRM")
+SHEET_ID = os.getenv("SHEET_ID", "")
+SHEET_ID_EXTRA = os.getenv("SHEET_ID_EXTRA", "")
 SHEET_RANGE_ENTREGUES = 'ENTREGUES CF!B2:G'
 CREDENTIALS_PATH = os.getenv("GOOGLE_CREDENTIALS_PATH", str(Path.home() / "secrets" / "gsa.json"))
 
@@ -285,10 +286,12 @@ def gsheets_service():
     return build('sheets', 'v4', credentials=creds)
 
 
-def clear_sheet(service):
+def clear_sheet(service, sheet_id=SHEET_ID):
     try:
-        service.spreadsheets().values().clear(spreadsheetId=SHEET_ID, range=SHEET_RANGE_ENTREGUES).execute()
-        logging.info("Informações apagadas com sucesso da aba 'ENTREGUES CF'.")
+        if not sheet_id:
+            raise RuntimeError("SHEET_ID não definido.")
+        service.spreadsheets().values().clear(spreadsheetId=sheet_id, range=SHEET_RANGE_ENTREGUES).execute()
+        logging.info(f"Informações apagadas com sucesso da aba 'ENTREGUES CF' ({sheet_id}).")
     except Exception as e:
         logging.error(f"Erro ao apagar informações: {e}")
 
@@ -308,19 +311,22 @@ def split_into_batches(data, batch_size):
         yield data[i:i + batch_size]
 
 
-def publicar_rows(service, rows, start_row=2, batch_size=10000):
+def publicar_rows(service, rows, sheet_id=SHEET_ID, start_row=2, batch_size=10000):
+    if not sheet_id:
+        raise RuntimeError("SHEET_ID não definido para publicação.")
+
     pos = start_row
     for batch in split_into_batches(rows, batch_size):
         end_row = pos + len(batch) - 1
         batch_range = f'ENTREGUES CF!B{pos}:G{end_row}'
         body = {'values': batch}
         service.spreadsheets().values().update(
-            spreadsheetId=SHEET_ID,
+            spreadsheetId=sheet_id,
             range=batch_range,
             valueInputOption='RAW',
             body=body
         ).execute()
-        logging.info(f"Lote escrito: linhas {pos}–{end_row}.")
+        logging.info(f"Lote escrito em {sheet_id}: linhas {pos}–{end_row}.")
         pos = end_row + 1
     return pos
 
@@ -390,6 +396,17 @@ def coleta_e_publica():
     logging.info(f"CANCELADOS (coleta+export): {_fmt(t_can1 - t_can0)}")
     logging.info(f"TOTAL pipeline: {_fmt(t1 - t0)}")
     logging.info(f"Arquivos: {path_ent} | {path_can}")
+
+
+    # -----------------------------------------------------------------
+    # Publica também na nova planilha (se SHEET_ID_EXTRA estiver setado)
+    # -----------------------------------------------------------------
+    if SHEET_ID_EXTRA:
+        logging.info("Publicando também na planilha extra...")
+        service_extra = gsheets_service()
+        next_row_extra = publicar_rows(service_extra, rows_ent, sheet_id=SHEET_ID_EXTRA, start_row=2, batch_size=10000)
+        publicar_rows(service_extra, rows_can, sheet_id=SHEET_ID_EXTRA, start_row=next_row_extra, batch_size=10000)
+
 
 
 # =============================================================================
