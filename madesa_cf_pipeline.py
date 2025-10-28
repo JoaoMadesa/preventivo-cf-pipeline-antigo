@@ -57,9 +57,10 @@ LOOKBACK_DIAS = int(os.getenv("LOOKBACK_DIAS", "30"))
 # Requests tuning
 PAGE_SIZE = int(os.getenv("PAGE_SIZE", "1000"))
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "10"))
-TIMEOUT = (5, 60)
-TOTAL_RETRIES = 3
-BACKOFF = 0.5
+# timeout = (connect_timeout, read_timeout) — aumente o read_timeout
+TIMEOUT = (int(os.getenv("CONNECT_TIMEOUT", "5")), int(os.getenv("READ_TIMEOUT", "120")))
+TOTAL_RETRIES = int(os.getenv("TOTAL_RETRIES", "5"))
+BACKOFF = float(os.getenv("BACKOFF", "1.0"))
 
 # Pastas
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", str(Path.cwd() / "out"))
@@ -94,12 +95,10 @@ def _fmt(segundos: float) -> str:
     s = int(segundos) % 60
     return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
 
-
 def _norm(s: str) -> str:
     if s is None:
         return ""
     return str(s).strip().upper()
-
 
 def format_value(value):
     if isinstance(value, datetime):
@@ -107,7 +106,6 @@ def format_value(value):
     if value is None:
         return ''
     return str(value)
-
 
 def format_data_iso_to_br(iso_str: str) -> str:
     if not iso_str:
@@ -126,7 +124,6 @@ def format_data_iso_to_br(iso_str: str) -> str:
 # =============================================================================
 # Confirma Fácil
 # =============================================================================
-
 def make_session(max_pool=20, total_retries=3, backoff=0.5):
     s = requests.Session()
     retries = Retry(
@@ -141,9 +138,13 @@ def make_session(max_pool=20, total_retries=3, backoff=0.5):
     adapter = HTTPAdapter(pool_connections=max_pool, pool_maxsize=max_pool, max_retries=retries)
     s.mount("https://", adapter)
     s.mount("http://", adapter)
-    s.headers.update({"Accept-Encoding": "gzip, deflate"})
+    # keep-alive + gzip
+    s.headers.update({
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "User-Agent": "madesa-cf-pipeline/1.0"
+    })
     return s
-
 
 def autentificador(session: requests.Session) -> str:
     if not CF_EMAIL or not CF_SENHA:
@@ -162,14 +163,12 @@ def autentificador(session: requests.Session) -> str:
         raise RuntimeError("Falha na autenticação: token não retornado")
     return token
 
-
 def periodo_busca(dias: int):
     hoje = datetime.today()
     di = (hoje - timedelta(days=dias)).strftime("%d-%m-%Y")
     df = hoje.strftime("%d-%m-%Y")
     logging.info(f"Período: {di} até {df}")
     return di, df
-
 
 def montar_params(di: str, df: str, page: int, codigos: str):
     return {
@@ -182,13 +181,15 @@ def montar_params(di: str, df: str, page: int, codigos: str):
         "tipoData": "OCORRENCIA",
     }
 
-
 def fetch_page(session: requests.Session, token: str, params: dict):
     headers = {"Authorization": token, "accept": "application/json"}
-    r = session.get(OCORR_URL, headers=headers, params=params, timeout=TIMEOUT)
-    r.raise_for_status()
-    return r.json().get("respostas", [])
-
+    try:
+        r = session.get(OCORR_URL, headers=headers, params=params, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json().get("respostas", [])
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"fetch_page falhou para pagina={params.get('page')}: {e}")
+        return []
 
 def consultar_ocorrencias(di: str, df: str, token: str, session: requests.Session, codigos: str):
     params0 = montar_params(di, df, page=0, codigos=codigos)
@@ -213,7 +214,6 @@ def consultar_ocorrencias(di: str, df: str, token: str, session: requests.Sessio
                 logging.warning(f"Falha ao obter uma página: {e}")
     return resultados
 
-
 def extrair_dataframe(respostas):
     linhas = []
     for item in respostas:
@@ -232,7 +232,6 @@ def extrair_dataframe(respostas):
     df = pd.DataFrame(linhas)
     return df.where(pd.notna(df), '')  # evita 'nan' como string
 
-
 def exportar_df(df: pd.DataFrame, out_dir: str, nome_base: str, use_csv: bool = True) -> str:
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     if use_csv:
@@ -244,11 +243,9 @@ def exportar_df(df: pd.DataFrame, out_dir: str, nome_base: str, use_csv: bool = 
     logging.info(f"Arquivo gerado: {path} ({len(df):,} linhas)")
     return path
 
-
 # =============================================================================
 # DE→PARA
 # =============================================================================
-
 def load_transportadora_mapping(xlsx_path: str, sheet_name: str = "TRANSPORTADORA") -> dict:
     try:
         df = pd.read_excel(xlsx_path, sheet_name=sheet_name, usecols="A:B", dtype=str, engine="openpyxl")
@@ -267,24 +264,20 @@ def load_transportadora_mapping(xlsx_path: str, sheet_name: str = "TRANSPORTADOR
         logging.error(f"Falha ao ler DE→PARA em '{xlsx_path}' aba '{sheet_name}': {e}", exc_info=True)
         return {}
 
-
 def apply_mapping(value: str, mapping: dict) -> str:
     key = _norm(value)
     if key in mapping:
         return mapping[key]
     return value
 
-
 # =============================================================================
 # Google Sheets
 # =============================================================================
-
 def gsheets_service():
     if not Path(CREDENTIALS_PATH).exists():
         raise FileNotFoundError(f"Arquivo de credenciais não encontrado: {CREDENTIALS_PATH}")
     creds = Credentials.from_service_account_file(CREDENTIALS_PATH, scopes=SCOPES)
     return build('sheets', 'v4', credentials=creds)
-
 
 def clear_sheet(service, sheet_id=SHEET_ID):
     try:
@@ -295,7 +288,6 @@ def clear_sheet(service, sheet_id=SHEET_ID):
     except Exception as e:
         logging.error(f"Erro ao apagar informações: {e}")
 
-
 def get_last_row(service):
     try:
         result = service.spreadsheets().values().get(spreadsheetId=SHEET_ID, range='ENTREGUES CF!B:B').execute()
@@ -305,11 +297,9 @@ def get_last_row(service):
         logging.error(f"Erro ao obter última linha: {e}")
         return 2
 
-
 def split_into_batches(data, batch_size):
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
-
 
 def publicar_rows(service, rows, sheet_id=SHEET_ID, start_row=2, batch_size=10000):
     if not sheet_id:
@@ -330,11 +320,9 @@ def publicar_rows(service, rows, sheet_id=SHEET_ID, start_row=2, batch_size=1000
         pos = end_row + 1
     return pos
 
-
 # =============================================================================
 # DataFrame → rows B:G com DE→PARA
 # =============================================================================
-
 def montar_rows_para_sheet(df: pd.DataFrame, status: str, mapping: dict):
     if df.empty:
         return []
@@ -354,10 +342,22 @@ def montar_rows_para_sheet(df: pd.DataFrame, status: str, mapping: dict):
         ])
     return rows
 
-
 # =============================================================================
 # Pipeline
 # =============================================================================
+def _retry_consultar(di, df, token, session, codigos, attempts=3):
+    for attempt in range(1, attempts + 1):
+        try:
+            logging.info(f"Consultando ocorrências (codigos={codigos}) — tentativa {attempt}/{attempts}")
+            return consultar_ocorrencias(di, df, token, session, codigos)
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Falha na consulta (tentativa {attempt}/{attempts}): {e}")
+            if attempt == attempts:
+                logging.error("Número máximo de tentativas atingido. Abortando coleta.")
+                raise
+            sleep_time = BACKOFF * (2 ** (attempt - 1))
+            logging.info(f"Aguardando {sleep_time:.1f}s antes da próxima tentativa...")
+            time.sleep(sleep_time)
 
 def coleta_e_publica():
     t0 = time.perf_counter()
@@ -369,14 +369,14 @@ def coleta_e_publica():
 
     # ENTREGUES
     t_ent0 = time.perf_counter()
-    resp_ent = consultar_ocorrencias(di, df, token, session, CODES_ENTREGUES)
+    resp_ent = _retry_consultar(di, df, token, session, CODES_ENTREGUES, attempts=TOTAL_RETRIES)
     df_ent = extrair_dataframe(resp_ent)
     path_ent = exportar_df(df_ent, OUTPUT_DIR, OUTPUT_NAME_ENTREGUES, USE_CSV)
     t_ent1 = time.perf_counter()
 
     # CANCELADOS
     t_can0 = time.perf_counter()
-    resp_can = consultar_ocorrencias(di, df, token, session, CODES_CANCELADOS)
+    resp_can = _retry_consultar(di, df, token, session, CODES_CANCELADOS, attempts=TOTAL_RETRIES)
     df_can = extrair_dataframe(resp_can)
     path_can = exportar_df(df_can, OUTPUT_DIR, OUTPUT_NAME_CANCELADOS, USE_CSV)
     t_can1 = time.perf_counter()
@@ -407,12 +407,9 @@ def coleta_e_publica():
         next_row_extra = publicar_rows(service_extra, rows_ent, sheet_id=SHEET_ID_EXTRA, start_row=2, batch_size=10000)
         publicar_rows(service_extra, rows_can, sheet_id=SHEET_ID_EXTRA, start_row=next_row_extra, batch_size=10000)
 
-
-
 # =============================================================================
 # CLI / Menu
 # =============================================================================
-
 def menu_interativo():
     try:
         service = gsheets_service()
