@@ -59,7 +59,7 @@ PAGE_SIZE = int(os.getenv("PAGE_SIZE", "1000"))
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "10"))
 # timeout = (connect_timeout, read_timeout) — aumente o read_timeout
 TIMEOUT = (int(os.getenv("CONNECT_TIMEOUT", "5")), int(os.getenv("READ_TIMEOUT", "120")))
-TOTAL_RETRIES = int(os.getenv("TOTAL_RETRIES", "5"))
+TOTAL_RETRIES = int(os.getenv("TOTAL_RETRIES", "3"))
 BACKOFF = float(os.getenv("BACKOFF", "1.0"))
 
 # Pastas
