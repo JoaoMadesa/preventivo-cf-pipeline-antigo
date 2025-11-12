@@ -51,7 +51,7 @@ jobs:
           DEXPARA_XLSX_PATH: ${{ github.workspace }}/data/DExPARA.xlsx
           SHEET_ID: ${{ secrets.SHEET_ID }}   # planilha atual
           SHEET_ID_EXTRA: ${{ secrets.SHEET_ID_EXTRA }}              # nova planilha
-          LOOKBACK_DIAS: "30"
+          LOOKBACK_DIAS: "60"
         run: |
           python -V
           python madesa_cf_pipeline.py --run --lookback "${LOOKBACK_DIAS}"
