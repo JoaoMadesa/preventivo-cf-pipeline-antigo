@@ -1,9 +1,7 @@
 name: Madesa CF Pipeline
 
 on:
-  schedule:
-    - cron: "30 9 * * *"
-  workflow_dispatch: {}     # botão "Run workflow" manual
+  workflow_dispatch: {}     # bot釅 "Run workflow" manual
 
 jobs:
   run:
@@ -37,8 +35,8 @@ jobs:
 
       - name: Pre-run checks
         run: |
-          test -s "${{ github.workspace }}/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON não criado" && exit 1)
-          test -s "${{ github.workspace }}/data/DExPARA.xlsx" || (echo "ERRO: data/DExPARA.xlsx não encontrado no repositório" && exit 1)
+          test -s "${{ github.workspace }}/secrets/gsa.json" || (echo "ERRO: GOOGLE_CREDENTIALS_JSON n釅 criado" && exit 1)
+          test -s "${{ github.workspace }}/data/DExPARA.xlsx" || (echo "ERRO: data/DExPARA.xlsx n釅 encontrado no reposit┴io" && exit 1)
 
       - name: Run pipeline
         env:
